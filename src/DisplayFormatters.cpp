@@ -37,6 +37,22 @@ const char *DisplayFormatters::getModemPresetDisplayName(meshtastic_Config_LoRaC
     case meshtastic_Config_LoRaConfig_ModemPreset_LONG_MODERATE:
         return useShortName ? "LongM" : "LongMod";
         break;
+    case meshtastic_Config_LoRaConfig_ModemPreset_FLRC_TURBO:
+        return useShortName ? "FlrcT" : "FlrcTurbo";
+    case meshtastic_Config_LoRaConfig_ModemPreset_FLRC_FAST:
+        return useShortName ? "FlrcF" : "FlrcFast";
+    case meshtastic_Config_LoRaConfig_ModemPreset_FLRC_MEDIUM:
+        return useShortName ? "FlrcM" : "FlrcMedium";
+    case meshtastic_Config_LoRaConfig_ModemPreset_FLRC_LONG:
+        return useShortName ? "FlrcL" : "FlrcLong";
+    case meshtastic_Config_LoRaConfig_ModemPreset_GFSK_TURBO:
+        return useShortName ? "GfskT" : "GfskTurbo";
+    case meshtastic_Config_LoRaConfig_ModemPreset_GFSK_FAST:
+        return useShortName ? "GfskF" : "GfskFast";
+    case meshtastic_Config_LoRaConfig_ModemPreset_GFSK_MEDIUM:
+        return useShortName ? "GfskM" : "GfskMedium";
+    case meshtastic_Config_LoRaConfig_ModemPreset_GFSK_LONG:
+        return useShortName ? "GfskL" : "GfskLong";
     default:
         return useShortName ? "Custom" : "Invalid";
         break;

@@ -569,7 +569,7 @@ uint32_t RadioInterface::getRetransmissionMsec(const meshtastic_MeshPacket *p)
     uint8_t CWsize = map(channelUtil, 0, 100, CWmin, CWmax);
     // Assuming we pick max. of CWsize and there will be a client with SNR at half the range
     return 2 * packetAirtime + (pow_of_2(CWsize) + 2 * CWmax + pow_of_2(int((CWmax + CWmin) / 2))) * slotTimeMsec +
-           PROCESSING_TIME_MSEC;
+           (isFastModem() ? FAST_PROCESSING_TIME_MSEC : PROCESSING_TIME_MSEC);
 }
 
 /** The delay to use when we want to send something */
@@ -581,7 +581,10 @@ uint32_t RadioInterface::getTxDelayMsec()
     float channelUtil = airTime->channelUtilizationPercent();
     uint8_t CWsize = map(channelUtil, 0, 100, CWmin, CWmax);
     // LOG_DEBUG("Current channel utilization is %f so setting CWsize to %d", channelUtil, CWsize);
-    return random(0, pow_of_2(CWsize)) * slotTimeMsec;
+    uint32_t minGap = 0;
+    if (isFastModem())
+        minGap = fastModem.modulation == MODULATION_GFSK ? GFSK_MIN_TX_GAP_MSEC : FLRC_MIN_TX_GAP_MSEC;
+    return random(0, pow_of_2(CWsize)) * slotTimeMsec + minGap;
 }
 
 /** The CW size to use when calculating SNR_based delays */
@@ -786,6 +789,16 @@ void RadioInterface::applyModemConfig()
     meshtastic_Config_LoRaConfig &loraConfig = config.lora;
     bool validConfig = false; // We need to check for a valid configuration
     while (!validConfig) {
+        fastModem = FastModemParams();
+        if (loraConfig.use_preset && isFastModemPreset(loraConfig.modem_preset)) {
+            if (!myRegion->wideLora || !supportsFastModems()) {
+                LOG_ERROR("FLRC/GFSK presets need an SX128x in region LORA_24. Falling back to LongFast.");
+                RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_INVALID_RADIO_SETTING);
+                loraConfig.modem_preset = meshtastic_Config_LoRaConfig_ModemPreset_LONG_FAST;
+                continue;
+            }
+            fastModemParams(loraConfig.modem_preset, fastModem);
+        }
         if (loraConfig.use_preset) {
             modemPresetToParams(loraConfig.modem_preset, myRegion->wideLora, bw, sf, cr);
             if (loraConfig.coding_rate >= 5 && loraConfig.coding_rate <= 8 && loraConfig.coding_rate != cr) {
@@ -871,7 +884,7 @@ void RadioInterface::applyModemConfig()
     saveFreq(freq + loraConfig.frequency_offset);
 
     slotTimeMsec = computeSlotTimeMsec();
-    preambleTimeMsec = preambleLength * (pow_of_2(sf) / bw);
+    preambleTimeMsec = isFastModem() ? 1 : preambleLength * (pow_of_2(sf) / bw);
 
     LOG_INFO("Radio freq=%.3f, config.lora.frequency_offset=%.3f", freq, loraConfig.frequency_offset);
     LOG_INFO("Set radio: region=%s, name=%s, config=%u, ch=%d, power=%d", myRegion->name, channelName, loraConfig.modem_preset,
@@ -891,6 +904,9 @@ void RadioInterface::applyModemConfig()
   - MAC processing time (measured on T-beam) */
 uint32_t RadioInterface::computeSlotTimeMsec()
 {
+    if (isFastModem())
+        return FAST_SLOT_TIME_MSEC;
+
     float sumPropagationTurnaroundMACTime = 0.2 + 0.4 + 7; // in milliseconds
     float symbolTime = pow_of_2(sf) / bw;                  // in milliseconds
 

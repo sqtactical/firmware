@@ -365,6 +365,19 @@ void RadioLibInterface::onNotify(uint32_t notification)
 
     switch (notification) {
     case ISR_TX:
+        if (uint32_t wait = nextFrameDelayMsec()) {
+            notifyLater(wait, NEXT_FRAME, true); // sendingPacket stays set, so nothing else is sent meanwhile
+            break;
+        }
+        handleTransmitInterrupt();
+        startReceive();
+        setTransmitDelay();
+        break;
+    case NEXT_FRAME:
+        if (sendNextFrame()) {
+            enableInterrupt(isrTxLevel0);
+            break;
+        }
         handleTransmitInterrupt();
         startReceive();
         setTransmitDelay();
@@ -552,7 +565,9 @@ void RadioLibInterface::handleReceiveInterrupt()
     }
 #endif
 
-    int state = iface->readData((uint8_t *)&radioBuffer, length);
+    int state = readFrame(length);
+    if (state == RX_FRAME_PARTIAL)
+        return;
 #if ARCH_PORTDUINO
     if (portduino_config.logoutputlevel == level_trace) {
         printBytes("Raw incoming packet: ", (uint8_t *)&radioBuffer, length);
@@ -678,7 +693,7 @@ bool RadioLibInterface::startSend(meshtastic_MeshPacket *txp)
 
         size_t numbytes = beginSending(txp);
 
-        int res = iface->startTransmit((uint8_t *)&radioBuffer, numbytes);
+        int res = startTransmitFrame(numbytes);
         if (res != RADIOLIB_ERR_NONE) {
             LOG_ERROR("startTransmit failed, error=%d", res);
             RECORD_CRITICALERROR(meshtastic_CriticalErrorCode_RADIO_SPI_BUG);

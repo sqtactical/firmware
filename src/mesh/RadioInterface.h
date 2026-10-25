@@ -1,5 +1,6 @@
 #pragma once
 
+#include "FastModem.h"
 #include "MemoryPool.h"
 #include "MeshTypes.h"
 #include "Observer.h"
@@ -92,6 +93,16 @@ class RadioInterface
     uint8_t sf = 9;
     uint8_t cr = 5;
 
+    // FLRC/GFSK: packets last ~1 ms, so slots are bounded by MCU latency, not by a LoRa CAD
+    FastModemParams fastModem;
+    const uint32_t FAST_SLOT_TIME_MSEC = 1;
+    // same reason as the FLRC fragment gap: a receiver must read each frame before the next one overwrites it, and its
+    // main loop can be busy for up to ~10 ms (router, crypto, serial API) when serial debug logging is off
+    const uint32_t FLRC_MIN_TX_GAP_MSEC = 10;
+    const uint32_t GFSK_MIN_TX_GAP_MSEC = 10;
+    const uint32_t FAST_PROCESSING_TIME_MSEC = 1000;
+    bool isFastModem() const { return fastModem.modulation != MODULATION_LORA; }
+
     const uint8_t NUM_SYM_CAD = 2;       // Number of symbols used for CAD, 2 is the default since RadioLib 6.3.0 as per AN1200.48
     const uint8_t NUM_SYM_CAD_24GHZ = 4; // Number of symbols used for CAD in 2.4 GHz, 4 is recommended in AN1200.22 of SX1280
     uint32_t slotTimeMsec = computeSlotTimeMsec();
@@ -140,6 +151,9 @@ class RadioInterface
     virtual bool canSleep() { return true; }
 
     virtual bool wideLora() { return false; }
+
+    /// true if the chip can run the FLRC/GFSK presets (SX128x)
+    virtual bool supportsFastModems() { return false; }
 
     /// Prepare hardware for sleep.  Call this _only_ for deep sleep, not needed for light sleep.
     virtual bool sleep() { return true; }

@@ -53,7 +53,7 @@ class STM32WLx_ModuleWrapper : public STM32WLx_Module
 class RadioLibInterface : public RadioInterface, protected concurrency::NotifiedWorkerThread
 {
     /// Used as our notification from the ISR
-    enum PendingISR { ISR_NONE = 0, ISR_RX, ISR_TX, TRANSMIT_DELAY_COMPLETED };
+    enum PendingISR { ISR_NONE = 0, ISR_RX, ISR_TX, TRANSMIT_DELAY_COMPLETED, NEXT_FRAME };
 
     /**
      * Raw ISR handler that just calls our polymorphic method
@@ -274,6 +274,21 @@ class RadioLibInterface : public RadioInterface, protected concurrency::Notified
     /** Do any hardware setup needed on entry into send configuration for the radio.
      * Subclasses can customize, but must also call this base method */
     virtual void configHardwareForSend();
+
+    /// readFrame() result: a fragment was stored, the packet is not complete yet
+    static const int RX_FRAME_PARTIAL = 1;
+
+    /** Put the encoded packet in radioBuffer on air. Radios that must split it into several frames override this. */
+    virtual int16_t startTransmitFrame(size_t numbytes) { return iface->startTransmit((uint8_t *)&radioBuffer, numbytes); }
+
+    /** On TX done: ms to wait before the next frame of the current packet, or 0 if the packet is complete. */
+    virtual uint32_t nextFrameDelayMsec() { return 0; }
+
+    /** Start the next frame of the current packet. */
+    virtual bool sendNextFrame() { return false; }
+
+    /** Read the received frame into radioBuffer. Returns a RadioLib status or RX_FRAME_PARTIAL. */
+    virtual int readFrame(size_t &length) { return iface->readData((uint8_t *)&radioBuffer, length); }
 
     /** Could we send right now (i.e. either not actively receiving or transmitting)? */
     virtual bool canSendImmediately();

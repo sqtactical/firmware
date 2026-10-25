@@ -141,10 +141,13 @@ bool SerialConsole::handleToRadio(const uint8_t *buf, size_t len)
 
 void SerialConsole::log_to_serial(const char *logLevel, const char *format, va_list arg)
 {
+    meshtastic_LogRecord_Level ll = RedirectablePrint::getLogLevel(logLevel);
     if (usingProtobufs && config.security.debug_log_api_enabled) {
-        meshtastic_LogRecord_Level ll = RedirectablePrint::getLogLevel(logLevel);
         auto thread = concurrency::OSThread::currentThread;
         emitLogRecord(ll, thread ? thread->ThreadName.c_str() : "", format, arg);
+    } else if (usingProtobufs && ll < meshtastic_LogRecord_Level_WARNING) {
+        // An API client gets only framed protobufs; raw debug text costs ~2 ms of USB per line on every packet
+        return;
     } else
         RedirectablePrint::log_to_serial(logLevel, format, arg);
 }

@@ -1,4 +1,5 @@
 #include "StreamAPI.h"
+#include "PacketProfiler.h"
 #include "PowerFSM.h"
 #include "RTC.h"
 #include "Throttle.h"
@@ -175,6 +176,7 @@ int32_t StreamAPI::readStream()
 void StreamAPI::emitTxBuffer(size_t len)
 {
     if (len != 0) {
+        PROF_SCOPE(API_EMIT);
         txBuf[0] = START1;
         txBuf[1] = START2;
         txBuf[2] = (len >> 8) & 0xff;

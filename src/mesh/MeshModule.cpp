@@ -2,6 +2,7 @@
 #include "Channels.h"
 #include "MeshService.h"
 #include "NodeDB.h"
+#include "PacketProfiler.h"
 #include "configuration.h"
 #include "modules/RoutingModule.h"
 #include <algorithm>
@@ -87,6 +88,7 @@ meshtastic_MeshPacket *MeshModule::allocErrorResponse(meshtastic_Routing_Error e
 
 void MeshModule::callModules(meshtastic_MeshPacket &mp, RxSource src)
 {
+    PROF_SCOPE(MODULES);
     // LOG_DEBUG("In call modules");
     bool moduleFound = false;
 

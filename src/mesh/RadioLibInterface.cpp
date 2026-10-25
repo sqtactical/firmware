@@ -1,6 +1,7 @@
 #include "RadioLibInterface.h"
 #include "MeshTypes.h"
 #include "NodeDB.h"
+#include "PacketProfiler.h"
 #include "PowerMon.h"
 #include "SPILock.h"
 #include "Throttle.h"
@@ -63,6 +64,7 @@ RadioLibInterface::RadioLibInterface(LockingArduinoHal *hal, RADIOLIB_PIN_TYPE c
 
 void INTERRUPT_ATTR RadioLibInterface::isrLevel0Common(PendingISR cause)
 {
+    PROF_DO(prof::isrAt = micros());
     instance->disableInterrupt();
 
     BaseType_t xHigherPriorityTaskWoken;
@@ -196,6 +198,7 @@ ErrorCode RadioLibInterface::send(meshtastic_MeshPacket *p)
         packetPool.release(p);
         return res;
     }
+    PROF_DO(prof::mark(p->id, prof::SLOT_TXQ));
 
     // set (random) transmit delay to let others reconfigure their radio,
     // to avoid collisions and implement timing-based flooding
@@ -362,6 +365,14 @@ currently active.
 */
 void RadioLibInterface::onNotify(uint32_t notification)
 {
+#ifdef PROFILE_PACKETS
+    if (prof::isrAt && (notification == ISR_TX || notification == ISR_RX)) {
+        prof::add(prof::ISR_LATENCY, micros() - prof::isrAt);
+        if (notification == ISR_TX)
+            prof::add(prof::TX_AIR, prof::isrAt - prof::txStartAt);
+        prof::isrAt = 0;
+    }
+#endif
 
     switch (notification) {
     case ISR_TX:
@@ -374,6 +385,7 @@ void RadioLibInterface::onNotify(uint32_t notification)
         setTransmitDelay();
         break;
     case NEXT_FRAME:
+        PROF_DO(prof::txStartAt = micros());
         if (sendNextFrame()) {
             enableInterrupt(isrTxLevel0);
             break;
@@ -545,6 +557,7 @@ void RadioLibInterface::handleReceiveInterrupt()
 {
     // when this is called, we should be in receive mode - if we are not, just jump out instead of bombing. Possible Race
     // Condition?
+    PROF_SCOPE(RX_HANDLE);
     if (!isReceiving) {
         LOG_ERROR("handleReceiveInterrupt called when not in rx mode, which shouldn't happen");
         return;
@@ -693,6 +706,8 @@ bool RadioLibInterface::startSend(meshtastic_MeshPacket *txp)
 
         size_t numbytes = beginSending(txp);
 
+        PROF_DO(prof::markEnd(txp->id, prof::SLOT_TXQ, prof::TX_QUEUE));
+        PROF_DO(prof::txStartAt = micros());
         int res = startTransmitFrame(numbytes);
         if (res != RADIOLIB_ERR_NONE) {
             LOG_ERROR("startTransmit failed, error=%d", res);

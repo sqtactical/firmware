@@ -4,6 +4,7 @@
 #include "MeshRadio.h"
 #include "MeshService.h"
 #include "NodeDB.h"
+#include "PacketProfiler.h"
 #include "PositionPrecision.h"
 #include "RTC.h"
 
@@ -152,6 +153,7 @@ int32_t Router::runOnce()
  */
 void Router::enqueueReceivedMessage(meshtastic_MeshPacket *p)
 {
+    PROF_DO(prof::mark(p->id, prof::SLOT_RQ));
     // Try enqueue until successful
     while (!fromRadioQueue.enqueue(p, 0)) {
         meshtastic_MeshPacket *old_p;
@@ -423,6 +425,7 @@ void Router::sniffReceived(const meshtastic_MeshPacket *p, const meshtastic_Rout
 
 DecodeState perhapsDecode(meshtastic_MeshPacket *p)
 {
+    PROF_SCOPE(DECODE);
     concurrency::LockGuard g(cryptLock);
 
     if (config.device.rebroadcast_mode == meshtastic_Config_DeviceConfig_RebroadcastMode_KNOWN_ONLY &&
@@ -578,6 +581,7 @@ DecodeState perhapsDecode(meshtastic_MeshPacket *p)
  */
 meshtastic_Routing_Error perhapsEncode(meshtastic_MeshPacket *p)
 {
+    PROF_SCOPE(ENCODE);
     concurrency::LockGuard g(cryptLock);
 
     int16_t hash;
@@ -834,6 +838,8 @@ void Router::handleReceived(meshtastic_MeshPacket *p, RxSource src)
 
 void Router::perhapsHandleReceived(meshtastic_MeshPacket *p)
 {
+    PROF_DO(prof::markEnd(p->id, prof::SLOT_RQ, prof::ROUTER_QUEUE));
+    PROF_SCOPE(ROUTER_HANDLE);
 #if ENABLE_JSON_LOGGING
     // Even ignored packets get logged in the trace
     p->rx_time = getValidTime(RTCQualityFromNet); // store the arrival timestamp for the phone

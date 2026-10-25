@@ -5,6 +5,7 @@
 #include "MeshRadio.h"
 #include "MeshService.h"
 #include "NodeDB.h"
+#include "PacketProfiler.h"
 #include "PowerFSM.h"
 #include "PowerMon.h"
 #include "RadioLibInterface.h"
@@ -1148,6 +1149,9 @@ void scannerToSensorsMap(const std::unique_ptr<ScanI2CTwoWire> &i2cScanner, Scan
 void loop()
 {
     runASAP = false;
+    PROF_DO(uint32_t profLoopStart = micros());
+    PROF_DO(static uint32_t profLoopEnd = profLoopStart);
+    PROF_DO(prof::add(prof::LOOP_GAP, profLoopStart - profLoopEnd));
 
 #ifdef ARCH_ESP32
     esp32Loop();
@@ -1231,7 +1235,13 @@ void loop()
 #if HAS_SCREEN && ENABLE_MESSAGE_PERSISTENCE
     messageStoreAutosaveTick();
 #endif
+    PROF_DO(uint32_t profThreadsStart = micros());
+    PROF_DO(prof::add(prof::LOOP_PRE, profThreadsStart - profLoopStart));
     long delayMsec = mainController.runOrDelay();
+    PROF_DO(prof::add(prof::LOOP_THREADS, micros() - profThreadsStart));
+    PROF_DO(prof::add(prof::LOOP_BUSY, micros() - profLoopStart));
+    PROF_DO(prof::loopTick());
+    PROF_DO(profLoopEnd = micros());
 
     // We want to sleep as long as possible here - because it saves power
     if (!runASAP && loopCanSleep()) {

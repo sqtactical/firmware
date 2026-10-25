@@ -9,6 +9,7 @@
 #include "MeshService.h"
 #include "MessageStore.h"
 #include "NodeDB.h"
+#include "PacketProfiler.h"
 #include "PowerFSM.h"
 #include "RTC.h"
 #include "TypeConversions.h"
@@ -335,6 +336,7 @@ void MeshService::sendToPhone(meshtastic_MeshPacket *p)
         LOG_CRIT("Failed to queue a packet into toPhoneQueue!");
         abort();
     }
+    PROF_DO(prof::mark(p->id, prof::SLOT_PQ));
     fromNum++;
 }
 

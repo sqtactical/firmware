@@ -5,6 +5,7 @@
 #include "configuration.h"
 #include "main.h"
 #include "memGet.h"
+#include "mesh/PacketProfiler.h"
 #include "mesh/generated/meshtastic/mesh.pb.h"
 #include <assert.h>
 #include <cstring>
@@ -137,13 +138,13 @@ void RedirectablePrint::log_to_serial(const char *logLevel, const char *format, 
         if (color) {
             ::printf("\u001b[0m");
         }
-        ::printf("| %02d:%02d:%02d %u ", hour, min, sec, millis() / 1000);
+        ::printf("| %02d:%02d:%02d %u.%03u ", hour, min, sec, millis() / 1000, millis() % 1000);
 #else
         printf("%s ", logLevel);
         if (color) {
             printf("\u001b[0m");
         }
-        printf("| %02d:%02d:%02d %u ", hour, min, sec, millis() / 1000);
+        printf("| %02d:%02d:%02d %u.%03u ", hour, min, sec, millis() / 1000, millis() % 1000);
 #endif
     } else {
 #ifdef ARCH_PORTDUINO
@@ -151,13 +152,13 @@ void RedirectablePrint::log_to_serial(const char *logLevel, const char *format, 
         if (color) {
             ::printf("\u001b[0m");
         }
-        ::printf("| ??:??:?? %u ", millis() / 1000);
+        ::printf("| ??:??:?? %u.%03u ", millis() / 1000, millis() % 1000);
 #else
         printf("%s ", logLevel);
         if (color) {
             printf("\u001b[0m");
         }
-        printf("| ??:??:?? %u ", millis() / 1000);
+        printf("| ??:??:?? %u.%03u ", millis() / 1000, millis() % 1000);
 #endif
     }
     auto thread = concurrency::OSThread::currentThread;
@@ -276,6 +277,7 @@ meshtastic_LogRecord_Level RedirectablePrint::getLogLevel(const char *logLevel)
 
 void RedirectablePrint::log(const char *logLevel, const char *format, ...)
 {
+    PROF_SCOPE(LOG);
 
     // append \n to format
     size_t len = strlen(format);

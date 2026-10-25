@@ -44,6 +44,7 @@ void CryptoEngine::generateKeyPair(uint8_t *pubKey, uint8_t *privKey)
 
     LOG_DEBUG("Generate Curve25519 keypair");
     Curve25519::dh1(public_key, private_key);
+    clearSharedKeyCache();
     memcpy(pubKey, public_key, sizeof(public_key));
     memcpy(privKey, private_key, sizeof(private_key));
 }
@@ -65,6 +66,7 @@ bool CryptoEngine::regeneratePublicKey(uint8_t *pubKey, uint8_t *privKey)
         }
         memcpy(private_key, privKey, sizeof(private_key));
         memcpy(public_key, pubKey, sizeof(public_key));
+        clearSharedKeyCache();
     } else {
         LOG_WARN("X25519 key generation failed due to blank private key");
         return false;
@@ -98,10 +100,9 @@ bool CryptoEngine::encryptCurve25519(uint32_t toNode, uint32_t fromNode, meshtas
         LOG_DEBUG("Node %d or their public_key not found", toNode);
         return false;
     }
-    if (!setDHPublicKey(remotePublic.bytes)) {
+    if (!loadSharedKey(remotePublic.bytes)) {
         return false;
     }
-    hash(shared_key, 32);
     initNonce(fromNode, packetNum, extraNonceTmp);
 
     // Calculate the shared secret with the destination node and encrypt
@@ -140,10 +141,9 @@ bool CryptoEngine::decryptCurve25519(uint32_t fromNode, meshtastic_UserLite_publ
     }
 
     // Calculate the shared secret with the sending node and decrypt
-    if (!setDHPublicKey(remotePublic.bytes)) {
+    if (!loadSharedKey(remotePublic.bytes)) {
         return false;
     }
-    hash(shared_key, 32);
 
     initNonce(fromNode, packetNum, extraNonce);
     printBytes("Attempt decrypt with nonce: ", nonce, 13);
@@ -154,6 +154,27 @@ bool CryptoEngine::decryptCurve25519(uint32_t fromNode, meshtastic_UserLite_publ
 void CryptoEngine::setDHPrivateKey(uint8_t *_private_key)
 {
     memcpy(private_key, _private_key, 32);
+    clearSharedKeyCache();
+}
+
+bool CryptoEngine::loadSharedKey(const uint8_t *remotePublic)
+{
+    for (auto &e : sharedKeyCache) {
+        if (e.valid && memcmp(e.publicKey, remotePublic, 32) == 0) {
+            memcpy(shared_key, e.sharedKey, 32);
+            return true;
+        }
+    }
+    if (!setDHPublicKey((uint8_t *)remotePublic))
+        return false;
+    hash(shared_key, 32);
+
+    SharedKeyCacheEntry &e = sharedKeyCache[sharedKeyCacheNext];
+    sharedKeyCacheNext = (sharedKeyCacheNext + 1) % SHARED_KEY_CACHE_SIZE;
+    memcpy(e.publicKey, remotePublic, 32);
+    memcpy(e.sharedKey, shared_key, 32);
+    e.valid = true;
+    return true;
 }
 
 /**

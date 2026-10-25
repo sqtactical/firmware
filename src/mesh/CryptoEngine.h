@@ -81,6 +81,19 @@ class CryptoEngine
 #if !(MESHTASTIC_EXCLUDE_PKI)
     uint8_t shared_key[32] = {0};
     uint8_t private_key[32] = {0};
+
+    // X25519 + SHA256 costs ~80 ms per DM on nRF52: keep the derived keys of the last few peers
+    struct SharedKeyCacheEntry {
+        uint8_t publicKey[32];
+        uint8_t sharedKey[32];
+        bool valid;
+    };
+    static const uint8_t SHARED_KEY_CACHE_SIZE = 4;
+    SharedKeyCacheEntry sharedKeyCache[SHARED_KEY_CACHE_SIZE] = {};
+    uint8_t sharedKeyCacheNext = 0;
+    /// Fill shared_key (already hashed) for this peer, from the cache or by ECDH
+    bool loadSharedKey(const uint8_t *remotePublic);
+    void clearSharedKeyCache() { memset(sharedKeyCache, 0, sizeof(sharedKeyCache)); }
 #endif
     /**
      * Init our 128 bit nonce for a new packet

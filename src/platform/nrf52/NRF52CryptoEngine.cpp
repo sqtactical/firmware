@@ -16,6 +16,7 @@ class NRF52CryptoEngine : public CryptoEngine
             AES_init_ctx_iv(&ctx, _key.bytes, _nonce);
             AES_CTR_xcrypt_buffer(&ctx, bytes, numBytes);
         } else if (_key.length > 0) {
+            // CC310 start-up (SaSi_LibInit) costs ~100 ms per packet; begin() is a no-op once running, so leave it on
             nRFCrypto.begin();
             nRFCrypto_AES ctx;
             uint8_t myLen = ctx.blockLen(numBytes);
@@ -23,7 +24,6 @@ class NRF52CryptoEngine : public CryptoEngine
             ctx.begin();
             ctx.Process((char *)bytes, numBytes, _nonce, _key.bytes, _key.length, encBuf, ctx.encryptFlag, ctx.ctrMode);
             ctx.end();
-            nRFCrypto.end();
             memcpy(bytes, encBuf, numBytes);
         }
     }

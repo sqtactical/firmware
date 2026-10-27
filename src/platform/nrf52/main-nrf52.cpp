@@ -445,6 +445,8 @@ void checkSDEvents()
     }
 }
 
+void nrf52CryptoCellIdleCheck(); // NRF52CryptoEngine.cpp
+
 void nrf52Loop()
 {
     {
@@ -458,6 +460,7 @@ void nrf52Loop()
 
     checkSDEvents();
     reportLittleFSCorruptionOnce();
+    nrf52CryptoCellIdleCheck();
 
     variant_nrf52LoopHook(); // Optional variant hook called each nrf52Loop();
 }

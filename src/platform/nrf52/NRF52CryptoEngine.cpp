@@ -2,6 +2,29 @@
 #include "configuration.h"
 #include <Adafruit_nRFCrypto.h>
 #include <nrf_cc310/include/crys_ec_mont_edw_error.h>
+
+// SaSi_LibInit() (nRFCrypto.begin) costs ~95 ms of the main loop. Starting and stopping CryptoCell around every
+// AES block, key agreement, signature check and random fill paid that on every packet; keep it up between uses
+// instead, and power it down once it has been idle for a while (nrf52Loop()).
+static const uint32_t CRYPTOCELL_IDLE_MSEC = 2000;
+static uint32_t cryptoCellLastUse;
+
+bool nrf52CryptoCellAcquire()
+{
+    if (!nRFCrypto.begin()) // no-op while already up
+        return false;
+    cryptoCellLastUse = millis() | 1;
+    return true;
+}
+
+void nrf52CryptoCellIdleCheck()
+{
+    if (cryptoCellLastUse && millis() - cryptoCellLastUse > CRYPTOCELL_IDLE_MSEC) {
+        nRFCrypto.end();
+        cryptoCellLastUse = 0;
+    }
+}
+
 class NRF52CryptoEngine : public CryptoEngine
 {
   public:
@@ -15,7 +38,7 @@ class NRF52CryptoEngine : public CryptoEngine
             // CryptoCell only accelerates AES-128; AES-256 uses the shared software CTR.
             CryptoEngine::encryptAESCtr(_key, _nonce, numBytes, bytes);
         } else if (_key.length > 0) {
-            nRFCrypto.begin();
+            nrf52CryptoCellAcquire();
             nRFCrypto_AES ctx;
             // Must not be uint8_t: blockLen() rounds up to the AES block size, so numBytes in
             // 241..256 yields 256, which truncates to 0 and leaves Process() writing numBytes
@@ -25,7 +48,6 @@ class NRF52CryptoEngine : public CryptoEngine
             ctx.begin();
             ctx.Process((char *)bytes, numBytes, _nonce, _key.bytes, _key.length, encBuf, ctx.encryptFlag, ctx.ctrMode);
             ctx.end();
-            nRFCrypto.end();
             memcpy(bytes, encBuf, numBytes);
         }
     }
@@ -40,11 +62,10 @@ class NRF52CryptoEngine : public CryptoEngine
             return CryptoEngine::x25519(out, scalar, point);
         if (point && !isCanonical(point))
             return false; // matches Curve25519::eval
-        if (!nRFCrypto.begin())
+        if (!nrf52CryptoCellAcquire())
             return CryptoEngine::x25519(out, scalar, point);
         bool ok = point ? cc310X25519.agree(out, scalar, point) : cc310X25519.publicKey(out, scalar);
         uint32_t err = cc310X25519.lastError();
-        nRFCrypto.end();
         if (ok)
             return true;
         if (err == CRYS_OK) {
@@ -61,11 +82,10 @@ class NRF52CryptoEngine : public CryptoEngine
     // CC310 is final; any other error falls back to software so a hardware fault can't drop valid packets.
     bool ed25519Verify(const uint8_t *signature, const uint8_t *edPubKey, const uint8_t *msg, size_t msgLen) override
     {
-        if (!nRFCrypto.begin())
+        if (!nrf52CryptoCellAcquire())
             return CryptoEngine::ed25519Verify(signature, edPubKey, msg, msgLen);
         bool ok = cc310Ed25519.verify(signature, msg, msgLen, edPubKey);
         uint32_t err = cc310Ed25519.lastError();
-        nRFCrypto.end();
         if (ok)
             return true;
         if (err == CRYS_ECEDW_SIGN_VERIFY_FAILED_ERROR)

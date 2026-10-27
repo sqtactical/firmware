@@ -509,24 +509,24 @@ void RadioLibInterface::onNotify(uint32_t notification)
         notify(ISR_RX, false);
 
     switch (notification) {
-    case ISR_TX: {
-        // The chip is deaf in standby until startReceive(), so the airtime log and printPacket() wait until after it.
-        meshtastic_MeshPacket *sent;
-        {
-            // The detach and the re-arm are one sequence: a readout between them would clear the flags the arm
-            // sets up, and the hook's pre-stage switch must not land mid-readout either. The adopt below needs it
-            // too: inside it the readout task cannot be partway through the re-arm it is taking over.
-            RadioSequence seq(this);
-            sent = handleTransmitInterrupt(); // radio already back on the home config
-            // Let the hooks pre-stage the radio for the NEXT queued packet. Not required for correctness -
-            // TRANSMIT_DELAY_COMPLETED asks again before the scan, which is where the answer is acted on -
-            // but it keeps the post-TX listen window on the channel we are about to transmit on.
-            (void)RadioTxHooks::beforeTransmit(this, txQueue.getFront());
-            if (!adoptReceiveArmedFromIsr())
-                startReceive();
+    case ISR_TX:
+        if (const uint32_t wait = nextFrameDelayMsec()) {
+            notifyLater(wait, NEXT_FRAME, true); // sendingPacket stays set, so nothing else is sent meanwhile
+            break;
         }
-        setTransmitDelay();
-        finishSentPacket(sent); // outside the lock: it only logs airtime and prints
+        onTransmitDone();
+        break;
+    case NEXT_FRAME: {
+        bool sent;
+        {
+            RadioSequence seq(this);
+            sent = sendNextFrame();
+        }
+        if (sent) {
+            enableInterrupt(isrTxLevel0);
+            break;
+        }
+        onTransmitDone();
         break;
     }
     case ISR_RX: {
@@ -647,6 +647,27 @@ void RadioLibInterface::onNotify(uint32_t notification)
     default:
         assert(0); // We expected to receive a valid notification from the ISR
     }
+}
+
+void RadioLibInterface::onTransmitDone()
+{
+    // The chip is deaf in standby until startReceive(), so the airtime log and printPacket() wait until after it.
+    meshtastic_MeshPacket *sent;
+    {
+        // The detach and the re-arm are one sequence: a readout between them would clear the flags the arm
+        // sets up, and the hook's pre-stage switch must not land mid-readout either. The adopt below needs it
+        // too: inside it the readout task cannot be partway through the re-arm it is taking over.
+        RadioSequence seq(this);
+        sent = handleTransmitInterrupt(); // radio already back on the home config
+        // Let the hooks pre-stage the radio for the NEXT queued packet. Not required for correctness -
+        // TRANSMIT_DELAY_COMPLETED asks again before the scan, which is where the answer is acted on -
+        // but it keeps the post-TX listen window on the channel we are about to transmit on.
+        (void)RadioTxHooks::beforeTransmit(this, txQueue.getFront());
+        if (!adoptReceiveArmedFromIsr())
+            startReceive();
+    }
+    setTransmitDelay();
+    finishSentPacket(sent); // outside the lock: it only logs airtime and prints
 }
 
 void RadioLibInterface::setTransmitDelay()
@@ -897,6 +918,13 @@ void RadioLibInterface::handleReceiveInterrupt(const CapturedRxInfo *captured)
         rxBad++;
         airTime->logAirtime(RX_ALL_LOG, rxMsec);
         return;
+    }
+    if (state == RADIOLIB_ERR_NONE) {
+        state = acceptFrame(length);
+        if (state == RX_FRAME_PARTIAL) {
+            airTime->logAirtime(RX_ALL_LOG, rxMsec); // one fragment of a packet still being reassembled
+            return;
+        }
     }
     if (state != RADIOLIB_ERR_NONE) {
         // Log PacketHeader similar to RadioInterface::printPacket so we can try to match RX errors to other packets in the logs.
@@ -1380,7 +1408,7 @@ void RadioLibInterface::readOutFromTask()
         // to judge - which is why this belongs to the reader.
         clearReadIrqs();
     }
-    f.info.snr = iface->getSNR();
+    f.info.snr = getRxSNR();
     f.info.rssi = lround(iface->getRSSI());
     f.info.len = (uint16_t)len;
     // Here, not where the radio thread accounts for the frame: by then the chip has been put back in RX - after a

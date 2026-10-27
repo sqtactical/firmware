@@ -383,6 +383,8 @@ static void test_regionPresetMap_matchesRegionTable()
         // superset of the enforced list, never a subset).
         const meshtastic_Config_LoRaConfig_ModemPreset *enforced = r->getAvailablePresets();
         for (size_t e = 0; e < r->getNumPresets(); e++) {
+            if (isFastModemPreset(enforced[e]))
+                continue; // FLRC/GFSK presets are selectable by number only and deliberately not advertised
             bool advertised = false;
             for (pb_size_t p = 0; p < grp.presets_count; p++)
                 if (grp.presets[p] == enforced[e])

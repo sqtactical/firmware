@@ -5,7 +5,8 @@ ProMicro nRF52840 + Ebyte E28-2G4M27S boards they confirmed a direct message in 
 fastest LoRa preset and 546 ms for MEDIUM_SLOW, with no loss over 240 acknowledged messages. LoRa presets keep their
 original code path.
 
-Base: `meshtastic/firmware` `develop` (2.8.2, `eaba8b9`). Branch: `sx1280-fast-modems`, one commit per topic:
+Base: `meshtastic/firmware` `develop` (2.8.3, `267421b07`, 2026-11-09; first ported on `eaba8b9`, still kept on the
+`*-eaba8b9` branches). Branch: `sx1280-fast-modems`, one commit per topic:
 
 | Commit | What it does |
 |---|---|
